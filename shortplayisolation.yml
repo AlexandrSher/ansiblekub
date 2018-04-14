@@ -1,0 +1,27 @@
+------
+only delete workers from Vagrant and kube.yml
+- name: on Host
+  hosts: localhost
+  become: yes
+  become_user: student
+  tasks:
+    - shell: kubectl apply -f "{{item}}"
+      with_items:
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/namespace.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/default-backend.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/configmap.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/tcp-services-configmap.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/udp-services-configmap.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/rbac.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/with-rbac.yaml
+       - https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/provider/baremetal/service-nodeport.yaml
+    - shell: kubectl patch svc ingress-nginx -n ingress-nginx --patch '{ "spec":{"externalIPs":[ "192.168.56.120" ] }}'
+    - shell: kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}') | awk '/\s*token:/'
+      register: dashboard_token
+    - template:
+        dest: ./token.html
+        src: token.j2
+    - shell: kubectl taint nodes --all node-role.kubernetes.io/master-
+    - wait_for: timeout=40
+    - shell: kubectl proxy --address='0.0.0.0' --port=5050 --accept-hosts='^*$' &
+    - shell: google-chrome http://localhost:5050/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/ --new-window ./token.html
